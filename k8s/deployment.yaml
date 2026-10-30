@@ -19,16 +19,26 @@ spec:
       labels:
         app: saldes-api
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: saldes-api
-          image: ghcr.io/pytt156/churn-mlops-pipeline-daniela-api:d2acfa7ed622b5d599ae6f353f5dc4491424c547
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          image: ghcr.io/pytt156/churn-mlops-pipeline-daniela-api:1d9e7bcccd11933b995a6d83d335c126e1cbccbd
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           resources:
             requests:
               cpu: 50m
-              memory: 128Mi
+              memory: 96Mi
             limits:
               cpu: 500m
               memory: 512Mi
