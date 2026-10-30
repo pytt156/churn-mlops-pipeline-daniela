@@ -448,3 +448,78 @@ jobs:
           name: ringlista-${{ github.sha }}
           path: outputs/ringlista.csv
           if-no-files-found: error
+
+
+  deploy-production:
+    needs: publish-api
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' ||
+       github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: production
+
+    concurrency:
+      group: saldes-production
+      cancel-in-progress: false
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.37.2
+
+      - name: Configure Kubernetes access
+        shell: bash
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          set -euo pipefail
+          test -n "$KUBE_CONFIG"
+
+          KUBECONFIG="$RUNNER_TEMP/kubeconfig"
+          printf '%s' "$KUBE_CONFIG" > "$KUBECONFIG"
+          chmod 600 "$KUBECONFIG"
+
+          echo "KUBECONFIG=$KUBECONFIG" >> "$GITHUB_ENV"
+
+          test "$(kubectl config current-context)" = "mlops-ht26"
+
+      - name: Deploy approved API image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          NS="daniela-algerydh"
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}-api:${GITHUB_SHA}"
+
+          # Render the exact image built in this workflow.
+          kubectl set image \
+            -f k8s/deployment.yaml \
+            "saldes-api=$IMAGE" \
+            --local -o yaml \
+            > "$RUNNER_TEMP/deployment.yaml"
+
+          kubectl -n "$NS" apply --dry-run=server \
+            -f "$RUNNER_TEMP/deployment.yaml"
+
+          kubectl -n "$NS" apply -f k8s/service.yaml
+          kubectl -n "$NS" apply \
+            -f "$RUNNER_TEMP/deployment.yaml"
+
+          kubectl -n "$NS" rollout status \
+            deployment/saldes-api --timeout=180s
+
+          ACTUAL_IMAGE=$(kubectl -n "$NS" get deployment saldes-api \
+            -o jsonpath='{.spec.template.spec.containers[0].image}')
+
+          test "$ACTUAL_IMAGE" = "$IMAGE"
+
+          echo "Successfully deployed: $IMAGE"
+          kubectl -n "$NS" get pods -l app=saldes-api
