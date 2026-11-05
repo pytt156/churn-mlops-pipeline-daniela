@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: saldes-api
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - daniela-algerydh.89-167-53-206.sslip.io
+      secretName: saldes-api-tls
+  rules:
+    - host: daniela-algerydh.89-167-53-206.sslip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: saldes-api
+                port:
+                  number: 80
